@@ -22,23 +22,27 @@ class spMQTTWill
     protected $flag = 0;
     protected $topic = '';
     protected $message = '';
-    public function __construct($flag=1, $qos=1, $retain=0, $topic='', $message='')
+
+    public function __construct($flag = 1, $qos = 1, $retain = 0, $topic = '', $message = '')
     {
-        $this->flag    = $flag ? 1 : 0;
+        $this->flag = $flag ? 1 : 0;
         (new CheckQos)->check($qos);
-        $this->qos     = (int) $qos;
-        $this->retain  = $retain ? 1 : 0;
-        $this->topic   = $topic;
+        $this->qos = (int)$qos;
+        $this->retain = $retain ? 1 : 0;
+        $this->topic = $topic;
         $this->message = $message;
     }
+
     public function getTopic()
     {
         return $this->topic;
     }
+
     public function getMessage()
     {
         return $this->message;
     }
+
     /**
      *
      * @return int

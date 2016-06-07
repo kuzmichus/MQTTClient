@@ -10,7 +10,6 @@
 
 namespace MQTT\Messages;
 
-
 class Suback extends AbstractMessage
 {
     protected $message_type = spMQTTMessageType::SUBACK;

@@ -10,7 +10,6 @@
 
 namespace MQTT\Messages;
 
-
 use MQTT\spMQTTMessageType;
 
 /**

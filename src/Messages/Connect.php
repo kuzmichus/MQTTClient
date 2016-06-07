@@ -12,6 +12,7 @@ namespace MQTT\Messages;
 
 use MQTT\spMQTTMessageType;
 use MQTT\spMQTTUtil;
+use MQTT\spMQTTWill;
 
 class Connect extends AbstractMessage
 {
@@ -26,31 +27,37 @@ class Connect extends AbstractMessage
     protected $password = null;
     protected $keepalive = 60;
     protected $clientid = '';
+
     public function setClean($clean)
     {
         $this->clean = $clean ? 1 : 0;
     }
-    public function setWill(\spMQTTWill $will)
+
+    public function setWill(spMQTTWill $will)
     {
         $this->will = $will;
     }
-    public function setAuth($username, $password=null)
+
+    public function setAuth($username, $password = null)
     {
         $this->username = $username;
         $this->password = $password;
     }
+
     public function setKeepalive($keepalive)
     {
-        $this->keepalive = (int) $keepalive;
+        $this->keepalive = (int)$keepalive;
     }
+
     public function setClientID($clientid)
     {
         $this->clientid = $clientid;
     }
+
     protected function processBuild()
     {
         ;
-        $buffer = "";
+        $buffer = '';
         $buffer .= chr(0x00); # 0x00
         $buffer .= chr(0x06); # 0x06
         $buffer .= chr(0x4d); # 'M'
@@ -65,7 +72,7 @@ class Connect extends AbstractMessage
         $var = 0;
         # clean session
         if ($this->clean) {
-            $var|= 0x02;
+            $var |= 0x02;
         }
         # Will flags
         if ($this->will) {

@@ -37,10 +37,9 @@ class Puback extends AbstractMessage
     }
     protected function processBuild()
     {
-        ;
-        $buffer = "";
+        $buffer = '';
         $buffer .= pack('n', $this->msgid);
-        spMQTTDebug::Log('Message PUBACK: msgid='.$this->msgid);
+        $this->mqtt->getLogger()->debug('Message PUBACK: msgid='.$this->msgid);
         $this->header->setQos(1);
         return $buffer;
     }

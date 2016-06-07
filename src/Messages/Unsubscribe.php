@@ -19,21 +19,23 @@ class Unsubscribe extends AbstractMessage
     protected $protocol_type = self::WITH_PAYLOAD;
     protected $topics = array();
     protected $msgid = 0;
+
     public function addTopic($topic)
     {
         $this->topics[] = $topic;
     }
+
     public function setMsgID($msgid)
     {
         $this->msgid = $msgid;
     }
+
     protected function processBuild()
     {
-        ;
-        $buffer = "";
+        $buffer = '';
         # Variable Header: message identifier
         $buffer .= pack('n', $this->msgid);
-        spMQTTDebug::Log('Message UNSUBSCRIBE: msgid='.$this->msgid);
+        $this->mqtt->getLogger()->debug('Message UNSUBSCRIBE: msgid=' . $this->msgid);
         # Payload
         foreach ($this->topics as $topic) {
             $topic_length = strlen($topic);

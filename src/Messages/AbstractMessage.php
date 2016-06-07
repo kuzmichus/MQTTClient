@@ -22,10 +22,10 @@ abstract class AbstractMessage
      * @var spMQTT
      */
     protected $mqtt;
-    const FIXED_ONLY     = 0x01;
-    const WITH_VARIABLE  = 0x02;
-    const WITH_PAYLOAD   = 0x03;
-    const MSGID_ONLY     = 0x04;
+    const FIXED_ONLY = 0x01;
+    const WITH_VARIABLE = 0x02;
+    const WITH_PAYLOAD = 0x03;
+    const MSGID_ONLY = 0x04;
     protected $protocol_type = self::FIXED_ONLY;
     protected $read_bytes = 0;
     /**
@@ -38,11 +38,13 @@ abstract class AbstractMessage
      * @var int
      */
     protected $message_type = 0;
+
     public function __construct(spMQTT $mqtt)
     {
         $this->mqtt = $mqtt;
         $this->header = new spMQTTMessageHeader($this->message_type);
     }
+
     /**
      * Build packet data
      * @param int & $length
@@ -62,45 +64,49 @@ abstract class AbstractMessage
         }
         $length = strlen($message);
         $this->header->setRemainingLength($length);
-        spMQTTDebug::Log('Message Build: remaining length='.$length);
+        $this->mqtt->getLogger()->debug('Message Build: remaining length=' . $length);
         $length += $this->header->getLength();
         return $this->header->build() . $message;
     }
+
     protected function processBuild()
     {
         return '';
     }
+
     protected function processRead($message)
     {
         return false;
     }
+
     /**
      * Read packet to generate an new message object
      *
-     * @param int $message_type  Message type
+     * @param int $message_type Message type
      * @param spMQTTMessage & $class
      * @return mixed
      */
-    final public function read($message_type=null, & $class=null)
+    final public function read($message_type = null, & $class = null)
     {
         if (!empty($message_type)) {
-            spMQTTDebug::Log('Message Read: message_type='.$message_type);
+            $this->mqtt->getLogger()->debug('Message Read: message_type=' . $message_type);
             # create message type
             $class = $this->mqtt->getMessageObject($message_type);
         } else {
-            spMQTTDebug::Log('Message Read: message_type='.$this->message_type);
+            $this->mqtt->getLogger()->debug('Message Read: message_type=' . $this->message_type);
             $class = $this;
         }
-        spMQTTDebug::Log('Message Read: bytes to read='.$class->read_bytes);
+        $this->mqtt->getLogger()->debug('Message Read: bytes to read=' . $class->read_bytes);
+
         if ($class->read_bytes) {
             $message = $this->mqtt->socket_read($class->read_bytes);
         } else {
             $message = $this->mqtt->socket_read(8192);
         }
-        spMQTTDebug::Log('Message read: message=' . spMQTTDebug::printHex($message, true));
-        spMQTTDebug::Log('Message Read: bytes to read='.$class->read_bytes);
+        $this->mqtt->getLogger()->debug('Message read: message=' . spMQTTDebug::printHex($message, true));
+        $this->mqtt->getLogger()->debug('Message Read: bytes to read=' . $class->read_bytes);
         if (!method_exists($class, 'processRead')) {
-            throw new \Exception('"processRead($message)" not defined in '. get_class($class), 200201);
+            throw new \Exception('"processRead($message)" not defined in ' . get_class($class), 200201);
         }
         if ($class->protocol_type == self::FIXED_ONLY) {
             return $class->processRead($message);
@@ -112,6 +118,7 @@ abstract class AbstractMessage
             throw new \Exception('Invalid protocol type', 200202);
         }
     }
+
     /**
      * Process packet with Fixed Header + Message Identifier only
      *
@@ -124,19 +131,20 @@ abstract class AbstractMessage
         $name = spMQTTMessageType::$name[$this->message_type];
         if (!isset($message[$packet_length - 1])) {
             # error
-            spMQTTDebug::Log("Message {$name}: error on reading");
+            $this->mqtt->getLogger()->error("Message {$name}: error on reading");
             return false;
         }
         $packet = unpack('Ccmd/Clength/nmsgid', $message);
         $packet['cmd'] = $this->unpackCommand($packet['cmd']);
         if ($packet['cmd']['message_type'] != $this->message_type) {
-            spMQTTDebug::Log("Message {$name}: type mismatch");
+            $this->mqtt->getLogger()->error("Message {$name}: type mismatch");
             return false;
         } else {
-            spMQTTDebug::Log("Message {$name}: success");
+            $this->mqtt->getLogger()->error("Message {$name}: success");
             return $packet;
         }
     }
+
     /**
      * Send packet
      *
@@ -144,12 +152,12 @@ abstract class AbstractMessage
      */
     public function write()
     {
-        spMQTTDebug::Log('Message write: message_type='.$this->message_type);
+        $this->mqtt->getLogger()->debug('Message write: message_type=' . $this->message_type);
         $length = 0;
         $message = $this->build($length);
         $bytes_written = $this->mqtt->socket_write($message, $length);
-        spMQTTDebug::Log('Message write: message=' . spMQTTDebug::printHex($message, true));
-        spMQTTDebug::Log('Message write: bytes written='.$bytes_written);
+        $this->mqtt->getLogger()->debug('Message write: message=' . spMQTTDebug::printHex($message, true));
+        $this->mqtt->getLogger()->debug('Message write: bytes written=' . $bytes_written);
         return $bytes_written;
     }
 
@@ -166,17 +174,17 @@ abstract class AbstractMessage
         $qos = ($cmd & 0x06) >> 1;
         $retain = ($cmd & 0x01);
         return array(
-            'message_type'  =>  $message_type,
-            'dup'           =>  $dup,
-            'qos'           =>  $qos,
-            'retain'        =>  $retain,
+            'message_type' => $message_type,
+            'dup' => $dup,
+            'qos' => $qos,
+            'retain' => $retain,
         );
     }
 
     /**
      * return string with a 16-bit big endian length ahead.
      *
-     * @param string $str  input string
+     * @param string $str input string
      * @return string      returned string
      */
     public function packStringWithLength($str)

@@ -36,10 +36,9 @@ class Pubrel extends AbstractMessage
     }
     protected function processBuild()
     {
-        ;
-        $buffer = "";
+        $buffer = '';
         $buffer .= pack('n', $this->msgid);
-        spMQTTDebug::Log('Message PUBREL: msgid='.$this->msgid);
+        $this->mqtt->getLogger()->debug('Message PUBREL: msgid='.$this->msgid);
         $this->header->setQos(1);
         return $buffer;
     }

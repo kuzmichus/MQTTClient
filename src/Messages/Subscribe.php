@@ -10,7 +10,6 @@
 
 namespace MQTT\Messages;
 
-use MQTT\spMQTTDebug;
 use MQTT\spMQTTMessageType;
 
 class Subscribe extends AbstractMessage
@@ -19,23 +18,25 @@ class Subscribe extends AbstractMessage
     protected $protocol_type = self::WITH_PAYLOAD;
     protected $topics = array();
     protected $msgid = 0;
+
     public function addTopic($topic, $qos)
     {
         $this->topics[$topic] = $qos;
     }
+
     public function setMsgID($msgid)
     {
         $this->msgid = $msgid;
     }
+
     protected function processBuild()
     {
-        ;
-        $buffer = "";
+        $buffer = '';
         # Variable Header: message identifier
         $buffer .= pack('n', $this->msgid);
-        spMQTTDebug::Log('Message SUBSCRIBE: msgid='.$this->msgid);
+        $this->mqtt->getLogger()->debug('Message SUBSCRIBE: msgid=' . $this->msgid);
         # Payload
-        foreach ($this->topics as $topic=>$qos) {
+        foreach ($this->topics as $topic => $qos) {
             $topic_length = strlen($topic);
             $buffer .= pack('n', $topic_length);
             $buffer .= $topic;

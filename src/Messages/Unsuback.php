@@ -15,11 +15,12 @@ use MQTT\spMQTTMessageType;
 /**
  * Message SUBACK
  */
-class Unsuback extends  AbstractMessage
+class Unsuback extends AbstractMessage
 {
     protected $message_type = spMQTTMessageType::UNSUBACK;
     protected $protocol_type = self::FIXED_ONLY;
     protected $read_bytes = 4;
+
     protected function processRead($message)
     {
         $unsuback_packet = $this->processReadFixedHeaderWithMsgID($message);

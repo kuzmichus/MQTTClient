@@ -47,12 +47,15 @@ class Publish extends AbstractMessage
     }
     protected function processBuild()
     {
-        ;
-        $buffer = "";
+        $buffer = '';
         # Topic
         $buffer .= $this->packStringWithLength($this->topic);
-        spMQTTDebug::Log('Message PUBLISH: topic='.$this->topic);
-        spMQTTDebug::Log('Message PUBLISH: QoS='.$this->header->getQos());
+
+        $this->mqtt->getLogger()->debug('Message PUBLISH', [
+            'topic' => $this->topic,
+            'QoS'   => $this->header->getQos()
+        ]);
+
         # Message ID if QoS > 0
         if ($this->header->getQos()) {
             if ($this->msgid !== null) {
@@ -61,11 +64,11 @@ class Publish extends AbstractMessage
                 $id = ++$this->msgid;
             }
             $buffer .= pack('n', $id);
-            spMQTTDebug::Log('Message PUBLISH: msgid='.$id);
+            $this->mqtt->getLogger()->debug('Message PUBLISH: msgid='.$id);
         }
         # Payload
         $buffer .= $this->message;
-        spMQTTDebug::Log('Message PUBLISH: message='.$this->message);
+        $this->mqtt->getLogger()->debug('Message PUBLISH: message='.$this->message);
         return  $buffer;
     }
 }

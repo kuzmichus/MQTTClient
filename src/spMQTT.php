@@ -10,14 +10,22 @@
 
 namespace MQTT;
 
+use MQTT\Messages\AbstractMessage;
 use MQTT\Validators\CheckClientID;
 use MQTT\Validators\CheckQos;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 
 /**
  * Class spMQTT
  */
 class spMQTT
 {
+    /**
+     * Client ID
+     *
+     * @var null|string
+     */
     protected $clientid;
     protected $address;
     protected $socket;
@@ -27,11 +35,14 @@ class spMQTT
     protected $connect_clean = true;
     protected $connect_will = null;
 
+    /** @var LoggerInterface */
+    protected $logger = null;
+
     /**
      * Create spMQTTMessage object
      *
      * @param int $message_type
-     * @return spMQTTMessage
+     * @return AbstractMessage
      * @throws \Exception
      */
     public function getMessageObject($message_type)
@@ -43,7 +54,7 @@ class spMQTT
         }
     }
 
-    public function __construct($address, $clientid=null)
+    public function __construct($address, $clientid = null, LoggerInterface $logger = null)
     {
         $this->address = $address;
         # check client id
@@ -51,6 +62,21 @@ class spMQTT
         (new CheckClientID())->check($clientid);
 
         $this->clientid = $clientid;
+
+        if (null === $logger) {
+            $this->logger = new NullLogger();
+        } else {
+            $this->logger = $logger;
+            spMQTTDebug::setLogger($logger);
+        }
+    }
+
+    /**
+     * @return LoggerInterface
+     */
+    public function getLogger()
+    {
+        return $this->logger;
     }
 
     /**
@@ -59,9 +85,9 @@ class spMQTT
      */
     protected function socket_connect()
     {
-        spMQTTDebug::Log('socket_connect()');
+        $this->logger->debug(__METHOD__);
         $context = stream_context_create();
-        spMQTTDebug::Log('socket_connect(): connect to='.$this->address);
+        $this->logger->debug('socket_connect(): connect to=' . $this->address);
 
         $this->socket = stream_socket_client(
             $this->address,
@@ -72,10 +98,10 @@ class spMQTT
             $context
         );
         if (!$this->socket) {
-            spMQTTDebug::Log("stream_socket_client() {$errno}, {$errstr}", true);
+            $this->logger->error("stream_socket_client() {$errno}, {$errstr}");
             return false;
         }
-        stream_set_timeout($this->socket,  5);
+        //stream_set_timeout($this->socket, 5);
         # MUST BE IN BLOCKING MODE
         stream_set_blocking($this->socket, true);
 
@@ -109,14 +135,17 @@ class spMQTT
             return false;
         }
 
-        //	print_r(socket_get_status($this->socket));
-        $string = "";
+        // print_r(socket_get_status($this->socket));
+        $string = '';
         $togo = $length;
 
-        while (!feof($this->socket) && $togo>0) {
+        while (!feof($this->socket) && $togo > 0) {
             $togo = $length - strlen($string);
             if ($togo) {
                 $string .= fread($this->socket, $togo);
+                if (stream_get_meta_data($this->socket)['timed_out']) {
+                    echo 'timed_out = ', var_export(stream_get_meta_data($this->socket)['timed_out'], true), PHP_EOL;
+                }
             }
         }
 
@@ -131,8 +160,10 @@ class spMQTT
     protected function socket_close()
     {
         if (is_resource($this->socket)) {
-            spMQTTDebug::Log('socket_close()');
-            return fclose($this->socket);
+            $this->logger->debug(__METHOD__);
+            $result = fclose($this->socket);
+            $this->socket = null;
+            return $result;
         }
     }
 
@@ -142,11 +173,11 @@ class spMQTT
      * @param bool $close_current close current existed connection
      * @return bool
      */
-    public function reconnect($close_current=true)
+    public function reconnect($close_current = true)
     {
-        spMQTTDebug::Log('reconnect()');
+        $this->logger->debug(__METHOD__);
         if ($close_current) {
-            spMQTTDebug::Log('reconnect(): close current');
+            $this->logger->debug('reconnect(): close current');
             $this->disconnect();
             $this->socket_close();
         }
@@ -160,7 +191,7 @@ class spMQTT
      * @param string $username
      * @param string $password
      */
-    public function setAuth($username=null, $password=null)
+    public function setAuth($username = null, $password = null)
     {
         $this->username = $username;
         $this->password = $password;
@@ -173,7 +204,7 @@ class spMQTT
      */
     public function setKeepalive($keepalive)
     {
-        $this->keepalive = (int) $keepalive;
+        $this->keepalive = (int)$keepalive;
     }
 
     /**
@@ -207,7 +238,7 @@ class spMQTT
         if (!$this->socket_connect()) {
             return false;
         }
-        spMQTTDebug::Log('connect()');
+        $this->logger->debug(__METHOD__);
 
         $connectobj = $this->getMessageObject(spMQTTMessageType::CONNECT);
 
@@ -217,16 +248,16 @@ class spMQTT
 
         # default client id
         if (empty($this->clientid)) {
-            $clientid = 'mqtt'.substr(md5(uniqid('mqtt', true)), 8, 16);
+            $clientid = 'mqtt' . substr(md5(uniqid('mqtt', true)), 8, 16);
         } else {
             $clientid = $this->clientid;
         }
         $connectobj->setClientID($clientid);
-        spMQTTDebug::Log('connect(): clientid=' . $clientid);
+        $this->logger->debug('connect(): clientid=' . $clientid);
         $connectobj->setKeepalive($this->keepalive);
-        spMQTTDebug::Log('connect(): keepalive=' . $this->keepalive);
+        $this->logger->debug('connect(): keepalive=' . $this->keepalive);
         $connectobj->setAuth($this->username, $this->password);
-        spMQTTDebug::Log('connect(): username=' . $this->username . ' password=' . $this->password);
+        $this->logger->debug('connect(): username=' . $this->username . ' password=' . $this->password);
         $connectobj->setClean($this->connect_clean);
         if ($this->connect_will instanceof spMQTTWill) {
             $connectobj->setWill($this->connect_will);
@@ -236,12 +267,12 @@ class spMQTT
         $msg = $connectobj->build($length);
 
         $bytes_written = $connectobj->write();
-        spMQTTDebug::Log('connect(): bytes written=' . $bytes_written);
+        $this->logger->debug('connect(): bytes written=' . $bytes_written);
 
 
         $connackobj = null;
         $connected = $connectobj->read(spMQTTMessageType::CONNACK, $connackobj);
-        spMQTTDebug::Log('connect(): connected=' . ($connected ? 1 : 0));
+        $this->logger->debug('connect(): connected=' . ($connected ? 1 : 0));
 
         # save current time for ping ?
 
@@ -259,9 +290,9 @@ class spMQTT
      * @param int|null $msgid
      * @return array|bool
      */
-    public function publish($topic, $message, $dup=0, $qos=0, $retain=0, $msgid=null)
+    public function publish($topic, $message, $dup = 0, $qos = 0, $retain = 0, $msgid = null)
     {
-        spMQTTDebug::Log('publish()');
+        $this->logger->debug(__METHOD__);
         $publishobj = $this->getMessageObject(spMQTTMessageType::PUBLISH);
         $publishobj->setTopic($topic);
         $publishobj->setMessage($message);
@@ -271,13 +302,13 @@ class spMQTT
         $publishobj->setMsgID($msgid);
 
         $publish_bytes_written = $publishobj->write();
-        spMQTTDebug::Log('publish(): bytes written=' . $publish_bytes_written);
+        $this->logger->debug('publish(): bytes written=' . $publish_bytes_written);
 
         if ($qos == 0) {
             return array(
-                'qos'   =>  $qos,
-                'ret'   =>  $publish_bytes_written != false,
-                'publish' =>  $publish_bytes_written,
+                'qos' => $qos,
+                'ret' => $publish_bytes_written != false,
+                'publish' => $publish_bytes_written,
             );
         } elseif ($qos == 1) {
             # QoS = 1, PUBLISH + PUBACK
@@ -285,10 +316,10 @@ class spMQTT
             $puback_msgid = $publishobj->read(spMQTTMessageType::PUBACK, $pubackobj);
 
             return array(
-                'qos'   =>  $qos,
-                'ret'   =>  $publish_bytes_written != false,
-                'publish' =>  $publish_bytes_written,
-                'puback'  =>  $puback_msgid,
+                'qos' => $qos,
+                'ret' => $publish_bytes_written != false,
+                'publish' => $publish_bytes_written,
+                'puback' => $puback_msgid,
             );
         } elseif ($qos == 2) {
             # QoS = 2, PUBLISH + PUBREC + PUBREL + PUBCOMP
@@ -304,12 +335,12 @@ class spMQTT
             $pubcomp_msgid = $pubrelobj->read(spMQTTMessageType::PUBCOMP, $pubcompobj);
 
             return array(
-                'qos'   =>  $qos,
-                'ret'   =>  $publish_bytes_written != false,
-                'publish' =>  $publish_bytes_written,
-                'pubrec'  =>  $pubrec_msgid,
-                'pubrel'  =>  $pubrel_bytes_written,
-                'pubcomp' =>  $pubcomp_msgid,
+                'qos' => $qos,
+                'ret' => $publish_bytes_written != false,
+                'publish' => $publish_bytes_written,
+                'pubrec' => $pubrec_msgid,
+                'pubrel' => $pubrel_bytes_written,
+                'pubcomp' => $pubcomp_msgid,
             );
         } else {
             return false;
@@ -325,9 +356,11 @@ class spMQTT
      */
     public function subscribe(array $topics)
     {
-        foreach ($topics as $topic_name=>$topic_qos) {
+        $this->logger->debug(__METHOD__);
+        foreach ($topics as $topic_name => $topic_qos) {
             $this->topics_to_subscribe[$topic_name] = $topic_qos;
         }
+        $this->logger->debug('subscribe(): true');
         return true;
     }
 
@@ -360,7 +393,7 @@ class spMQTT
         }
 
         $all_topic_qos = array();
-        foreach ($this->topics_to_subscribe as $topic_name=>$topic_qos) {
+        foreach ($this->topics_to_subscribe as $topic_name => $topic_qos) {
             (new CheckQos())->check($topic_qos);
 
             $this->topics[$topic_name] = $topic_qos;
@@ -373,9 +406,14 @@ class spMQTT
             unset($this->topics_to_subscribe[$topic_name]);
         }
 
-        spMQTTDebug::Log('do_subscribe(): msgid=' . $msgid);
+        $this->logger->debug(__METHOD__, [
+            'msgid' => $msgid
+        ]);
         $subscribe_bytes_written = $subscribeobj->write();
-        spMQTTDebug::Log('do_subscribe(): bytes written=' . $subscribe_bytes_written);
+
+        $this->logger->debug(__METHOD__, [
+            'bytes written' => $subscribe_bytes_written
+        ]);
 
 //        # TODO: SUBACK+PUBLISH
 //        # read SUBACK
@@ -384,7 +422,9 @@ class spMQTT
 //
 //        # check msg id & qos payload
 //        if ($msgid != $suback_result['msgid']) {
-//            throw new SPMQTT_Exception('SUBSCRIBE/SUBACK message identifier mismatch: ' . $msgid . ':' . $suback_result['msgid'], 100402);
+//            throw new SPMQTT_Exception(
+//                          'SUBSCRIBE/SUBACK message identifier mismatch: ' .
+//                           $msgid . ':' . $suback_result['msgid'], 100402);
 //        }
 //        if ($all_topic_qos != $suback_result['qos']) {
 //            throw new SPMQTT_Exception('SUBACK returned qos list doesn\'t match SUBSCRIBE', 100403);
@@ -401,10 +441,11 @@ class spMQTT
      */
     public function loop($callback)
     {
-        spMQTTDebug::Log('loop()');
+        $this->logger->debug(__METHOD__);
 
         if (empty($this->topics) && empty($this->topics_to_subscribe)) {
-            throw new \Exception('No topic subscribed/to be subscribed', 100601);
+            $this->logger->critical('No topic subscribed/to be subscribed');
+            throw new \LogicException('No topic subscribed/to be subscribed', 100601);
         }
 
         $last_subscribe_msgid = 0;
@@ -420,12 +461,18 @@ class spMQTT
                 $last_unsubscribe_msgid = $this->do_unsubscribe();
             }
 
+            if (!$this->socket || !$this->checkAndPing()) {
+                $this->logger->error('loop(): EOF detected');
+                $this->reconnect();
+                $this->subscribe($this->topics);
+            }
+
             $sockets = array($this->socket);
             $w = $e = null;
 
             if (stream_select($sockets, $w, $e, $this->keepalive / 2)) {
                 if (feof($this->socket) || !$this->checkAndPing()) {
-                    spMQTTDebug::Log('loop(): EOF detected');
+                    $this->logger->error('loop(): EOF detected');
                     $this->reconnect();
                     $this->subscribe($this->topics);
                 }
@@ -451,10 +498,15 @@ class spMQTT
                 $qos = $cmd['qos'];
                 $retain = $cmd['retain'];
 
-                spMQTTDebug::Log("loop(): message_type={$message_type}, dup={$dup}, QoS={$qos}, RETAIN={$retain}");
+                $this->logger->debug(__METHOD__, [
+                    'message_type' => $message_type,
+                    'dup' => $dup,
+                    'QoS' => $qos,
+                    'RETAIN' => $retain
+                ]);
 
                 $flag_remaining_length_finished = 0;
-                for ($i=1; isset($read_message[$i]); $i++) {
+                for ($i = 1; isset($read_message[$i]); $i++) {
                     if (ord($read_message[$i]) < 0x80) {
                         $flag_remaining_length_finished = 1;
                         break;
@@ -473,16 +525,22 @@ class spMQTT
                 } else {
                     $to_read = $remaining_length - 2;
                 }
-                spMQTTDebug::Log('loop(): remaining length=' . $remaining_length . ' to read='.$to_read);
+
+                $this->logger->debug(__METHOD__, [
+                    'remaining length' => $remaining_length,
+                    'to read' => $to_read
+                ]);
 
                 $read_message .= $this->socket_read($to_read);
 
-                spMQTTDebug::Log('loop(): read message=' . spMQTTDebug::printHex($read_message, true));
+                $this->logger->debug(__METHOD__, [
+                    'message' => spMQTTDebug::printHex($read_message, true)
+                ]);
 
                 switch ($message_type) {
                     # Process PUBLISH
                     case spMQTTMessageType::PUBLISH:
-                        spMQTTDebug::Log('loop(): PUBLISH');
+                        $this->logger->debug('loop(): PUBLISH');
                         # topic length
                         $topic_length = $this->toUnsignedShort(substr($read_message, $pos, 2));
                         $pos += 2;
@@ -500,7 +558,7 @@ class spMQTT
                         $message = substr($read_message, $pos);
 
                         if ($qos == 0) {
-                            spMQTTDebug::Log('loop(): PUBLISH QoS=0 PASS');
+                            $this->logger->debug('loop(): PUBLISH QoS=0 PASS');
                             # Do nothing
                         } elseif ($qos == 1) {
                             # PUBACK
@@ -508,17 +566,17 @@ class spMQTT
                             $pubackobj->setDup($dup);
                             $pubackobj->setMsgID($msgid);
                             $puback_bytes_written = $pubackobj->write();
-                            spMQTTDebug::Log('loop(): PUBLISH QoS=1 PUBACK written=' . $puback_bytes_written);
+                            $this->logger->debug('loop(): PUBLISH QoS=1 PUBACK written=' . $puback_bytes_written);
                         } elseif ($qos == 2) {
                             # PUBREC
                             $pubrecobj = $this->getMessageObject(spMQTTMessageType::PUBREC);
                             $pubrecobj->setDup($dup);
                             $pubrecobj->setMsgID($msgid);
                             $pubrec_bytes_written = $pubrecobj->write();
-                            spMQTTDebug::Log('loop(): PUBLISH QoS=2 PUBREC written=' . $pubrec_bytes_written);
+                            $this->logger->debug('loop(): PUBLISH QoS=2 PUBREC written=' . $pubrec_bytes_written);
                         } else {
                             # wrong packet
-                            spMQTTDebug::Log('loop(): PUBLISH Invalid QoS');
+                            $this->logger->error('loop(): PUBLISH Invalid QoS');
                         }
                         # callback
                         call_user_func($callback, $this, $topic, $message);
@@ -526,7 +584,7 @@ class spMQTT
 
                     # Process PUBREL
                     case spMQTTMessageType::PUBREL:
-                        spMQTTDebug::Log('loop(): PUBREL');
+                        $this->logger->debug('loop(): PUBREL');
                         $msgid = $this->toUnsignedShort(substr($read_message, $pos, 2));
                         $pos += 2;
 
@@ -535,48 +593,54 @@ class spMQTT
                         $pubcompobj->setDup($dup);
                         $pubcompobj->setMsgID($msgid);
                         $pubcomp_bytes_written = $pubcompobj->write();
-                        spMQTTDebug::Log('loop(): PUBREL QoS=2 PUBCOMP written=' . $pubcomp_bytes_written);
+                        $this->logger->debug('loop(): PUBREL QoS=2 PUBCOMP written=' . $pubcomp_bytes_written);
                         break;
 
                     # Process SUBACK
                     case spMQTTMessageType::SUBACK:
-                        spMQTTDebug::Log('loop(): SUBACK');
+                        $this->logger->debug('loop(): SUBACK');
                         $msgid = $this->toUnsignedShort(substr($read_message, $pos, 2));
                         $pos += 2;
 
                         $qos_list = array();
-                        for ($i=$pos; isset($read_message[$i]); $i++) {
+                        for ($i = $pos; isset($read_message[$i]); $i++) {
                             # pick bit 0,1
                             $qos_list[] = ord($read_message[$i]) & 0x03;
                         }
 
                         # check msg id & qos payload
                         if ($msgid != $last_subscribe_msgid) {
-                            spMQTTDebug::Log('loop(): SUBACK message identifier mismatch: ' . $msgid . ':' . $last_subscribe_msgid);
+                            $this->logger->debug(
+                                'loop(): SUBACK message identifier mismatch: ' .
+                                $msgid . ':' .
+                                $last_subscribe_msgid
+                            );
                         } else {
-                            spMQTTDebug::Log('loop(): SUBACK msgid=' . $msgid);
+                            $this->logger->debug('loop(): SUBACK msgid=' . $msgid);
                         }
                         if ($last_subscribe_qos != $qos_list) {
-                            spMQTTDebug::Log('loop(): SUBACK returned qos list doesn\'t match SUBSCRIBE');
+                            $this->logger->debug('loop(): SUBACK returned qos list doesn\'t match SUBSCRIBE');
                         }
 
                         break;
 
                     # Process UNSUBACK
                     case spMQTTMessageType::UNSUBACK:
-                        spMQTTDebug::Log('loop(): UNSUBACK');
+                        $this->logger->debug('loop(): UNSUBACK');
                         $msgid = $this->toUnsignedShort(substr($read_message, $pos, 2));
                         $pos += 2;
 
                         # TODO:???
                         if ($msgid != $last_unsubscribe_msgid) {
-                            spMQTTDebug::Log('loop(): UNSUBACK message identifier mismatch ' . $msgid . ':' . $last_unsubscribe_msgid);
+                            $this->logger->debug(
+                                'loop(): UNSUBACK message identifier mismatch ' .
+                                $msgid . ':' .
+                                $last_unsubscribe_msgid
+                            );
                         } else {
-                            spMQTTDebug::Log('loop(): UNSUBACK msgid=' . $msgid);
+                            $this->logger->debug('loop(): UNSUBACK msgid=' . $msgid);
                         }
-
                         break;
-
                 }
             }
         }
@@ -584,7 +648,7 @@ class spMQTT
 
     protected function checkAndPing()
     {
-        spMQTTDebug::Log('checkAndPing()');
+        $this->logger->debug(__METHOD__);
         static $time = null;
         $current_time = time();
         if (empty($time)) {
@@ -592,7 +656,12 @@ class spMQTT
         }
 
         if ($current_time - $time >= $this->keepalive / 2) {
-            spMQTTDebug::Log("checkAndPing(): current_time={$current_time}, time={$time}, keepalive={$this->keepalive}");
+            $this->logger->debug(__METHOD__, [
+                'current_time' => $current_time,
+                'time' => $time,
+                'keepalive' => $this->keepalive
+            ]);
+
             $time = $current_time;
             $ping_result = $this->ping();
             return $ping_result;
@@ -614,6 +683,7 @@ class spMQTT
         }
         return true;
     }
+
     /**
      * Unsubscribe topics
      *
@@ -629,7 +699,7 @@ class spMQTT
         $unsubscribeobj = $this->getMessageObject(spMQTTMessageType::UNSUBSCRIBE);
         $unsubscribeobj->setMsgID($msgid);
 
-        foreach ($this->topics_to_unsubscribe as $tn=>$topic_name) {
+        foreach ($this->topics_to_unsubscribe as $tn => $topic_name) {
             if (!isset($this->topics[$topic_name])) {
                 # log
                 continue;
@@ -641,7 +711,7 @@ class spMQTT
         }
 
         $unsubscribe_bytes_written = $unsubscribeobj->write();
-        spMQTTDebug::Log('unsubscribe(): bytes written=' . $unsubscribe_bytes_written);
+        $this->logger->debug('unsubscribe(): bytes written=' . $unsubscribe_bytes_written);
 
         # read UNSUBACK
         $unsubackobj = null;
@@ -649,7 +719,12 @@ class spMQTT
 
         # check msg id & qos payload
         if ($msgid != $unsuback_msgid) {
-            throw new \Exception('UNSUBSCRIBE/UNSUBACK message identifier mismatch: ' . $msgid . ':' . $unsuback_msgid, 100502);
+            throw new \Exception(
+                'UNSUBSCRIBE/UNSUBACK message identifier mismatch: ' .
+                $msgid . ':' .
+                $unsuback_msgid,
+                100502
+            );
         }
 
         return true;
@@ -662,7 +737,7 @@ class spMQTT
      */
     public function disconnect()
     {
-        spMQTTDebug::Log('disconnect()');
+        $this->logger->debug(__METHOD__);
         $disconnectobj = $this->getMessageObject(spMQTTMessageType::DISCONNECT);
         return $disconnectobj->write();
     }
@@ -674,12 +749,14 @@ class spMQTT
      */
     public function ping()
     {
-        spMQTTDebug::Log(__METHOD__);
+        $this->logger->debug(__METHOD__);
         $pingreqobj = $this->getMessageObject(spMQTTMessageType::PINGREQ);
         $pingreqobj->write();
         $pingrespobj = null;
         $pingresp = $pingreqobj->read(spMQTTMessageType::PINGRESP, $pingrespobj);
-        spMQTTDebug::Log('ping(): response ' . ($pingresp ? 1 : 0));
+        $this->logger->debug(__METHOD__, [
+            'response' => ($pingresp ? 1 : 0)
+        ]);
         return $pingresp;
     }
 
@@ -704,7 +781,7 @@ class spMQTT
     public function remainingLengthDecode($msg, &$i)
     {
         $multiplier = 1;
-        $value = 0 ;
+        $value = 0;
         do {
             $digit = ord($msg[$i]);
             $value += ($digit & 0x7F) * $multiplier;
@@ -727,10 +804,10 @@ class spMQTT
         $qos = ($cmd & 0x06) >> 1;
         $retain = ($cmd & 0x01);
         return array(
-            'message_type'  =>  $message_type,
-            'dup'           =>  $dup,
-            'qos'           =>  $qos,
-            'retain'        =>  $retain,
+            'message_type' => $message_type,
+            'dup' => $dup,
+            'qos' => $qos,
+            'retain' => $retain,
         );
     }
 }

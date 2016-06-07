@@ -10,7 +10,6 @@
 
 namespace MQTT\Messages;
 
-
 use MQTT\spMQTTDebug;
 use MQTT\spMQTTMessageType;
 
@@ -38,16 +37,17 @@ class Pubrec extends AbstractMessage
     {
         $this->msgid = $msgid;
     }
+
     public function setDup($dup)
     {
         return $this->header->setDup($dup);
     }
+
     protected function processBuild()
     {
-        ;
-        $buffer = "";
+        $buffer = '';
         $buffer .= pack('n', $this->msgid);
-        spMQTTDebug::Log('Message PUBREC: msgid='.$this->msgid);
+        $this->mqtt->getLogger()->debug('Message PUBREC: msgid=' . $this->msgid);
         $this->header->setQos(1);
         return $buffer;
     }

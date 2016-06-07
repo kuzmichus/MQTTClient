@@ -24,16 +24,16 @@ class Pingresp extends AbstractMessage
         # for PINGRESP
         if (!isset($message[$this->read_bytes - 1])) {
             # error
-            spMQTTDebug::Log('Message PINGRESP: error on reading');
+            $this->mqtt->getLogger()->error('Message PINGRESP: error on reading');
             return false;
         }
         $packet = unpack('Ccmd/Clength', $message);
         $packet['cmd'] = $this->unpackCommand($packet['cmd']);
         if ($packet['cmd']['message_type'] != $this->message_type) {
-            spMQTTDebug::Log("Message PINGRESP: type mismatch");
+            $this->mqtt->getLogger()->error('Message PINGRESP: type mismatch');
             return false;
         } else {
-            spMQTTDebug::Log("Message PINGRESP: success");
+            $this->mqtt->getLogger()->debug('Message PINGRESP: success');
             return true;
         }
     }
